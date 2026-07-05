@@ -1,0 +1,52 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Entornos virtuales ────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Bases de datos locales (SQLite) ───────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+campusradar.db
+campusradar_demo.db
+campusradar_repo_demo.db
+
+# ── Secretos / configuración local ────────────────────────────────────────
+.env
+.env.local
+*.local
+
+# ── Testing / coverage ────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── IDE / editores / agentes ──────────────────────────────────────────────
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# ── Sistema operativo ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Docker ────────────────────────────────────────────────────────────────
+*.pid
+
+# ── Notas personales (no versionar) ───────────────────────────────────────
+next_steps.md

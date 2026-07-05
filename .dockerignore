@@ -1,0 +1,28 @@
+# Contexto de build mínimo: la imagen solo necesita app/ y requirements.txt
+.venv/
+venv/
+env/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Datos locales y secretos
+*.db
+*.sqlite
+*.sqlite3
+.env
+
+# Tooling / pruebas / docs (no van a la imagen de producción)
+.pytest_cache/
+tests/
+docs/
+*.md
+readme.txt
+next_steps.md
+
+# Control de versiones e IDE
+.git/
+.gitignore
+.vscode/
+.idea/

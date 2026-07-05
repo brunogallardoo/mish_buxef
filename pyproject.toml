@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campusradar"
+version = "1.0.0"
+description = "CampusRadar — plataforma colaborativa de información universitaria (EL-4203, FCFM UChile)"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+# Permite `import app.*` en los tests sin instalar el paquete, y ubica los tests.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

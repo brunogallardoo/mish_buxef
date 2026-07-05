@@ -1,0 +1,75 @@
+# =============================================================================
+# CampusRadar - docker-compose.yml  (configuración base: app + SQLite)
+# =============================================================================
+#
+# Uso (SQLite, por defecto):
+#   Levantar:   docker compose up --build -d
+#   Ver logs:   docker compose logs -f campusradar
+#   Bajar:      docker compose down
+#   Reset BD:   docker compose down -v        (elimina el volumen de datos)
+#
+# Uso (PostgreSQL): se combina con el override que agrega el servicio `db`:
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up --build -d
+#
+# DECISIONES DE DISEÑO:
+# - named volume "campusradar_data": la BD SQLite persiste entre reinicios.
+# - restart: unless-stopped: el contenedor se reinicia ante fallos/reinicios.
+# - Red bridge interna "campusradar_net": permite añadir servicios (ej: db, nginx).
+# - DATABASE_URL configurable: por defecto SQLite en el volumen; el override de
+#   Postgres lo reemplaza por una URL postgresql+psycopg2://...
+# =============================================================================
+
+services:
+
+  campusradar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final          # etapa de producción del multi-stage build
+
+    container_name: campusradar_app
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      # Cambiar SECRET_KEY en producción real (o definirlo en un .env / panel del PaaS).
+      - SECRET_KEY=${SECRET_KEY:-campusradar-dev-secret-change-in-prod}
+      - DATABASE_URL=${DATABASE_URL:-/app/data/campusradar.db}
+      - PORT=8000
+
+    volumes:
+      # Named volume para persistir la BD SQLite entre reinicios.
+      - campusradar_data:/app/data
+
+    networks:
+      - campusradar_net
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+# =============================================================================
+# Volúmenes y red
+# =============================================================================
+volumes:
+  campusradar_data:
+    name: campusradar_data
+    driver: local
+
+networks:
+  campusradar_net:
+    name: campusradar_net
+    driver: bridge

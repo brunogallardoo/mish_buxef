@@ -1,0 +1,46 @@
+# =============================================================================
+# CampusRadar - Override para PostgreSQL
+# =============================================================================
+# Combina con la configuración base para usar PostgreSQL en lugar de SQLite:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up --build -d
+#
+# - Levanta un servicio `db` (postgres:16-alpine) con volumen persistente.
+# - Sobreescribe DATABASE_URL del servicio `campusradar` para apuntar a `db`.
+# - El driver psycopg2-binary ya está en requirements.txt.
+# - La app espera a que la BD esté "healthy" antes de arrancar (depends_on).
+#
+# Personaliza la contraseña con la variable de entorno DB_PASSWORD.
+# =============================================================================
+
+services:
+
+  campusradar:
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://campusradar:${DB_PASSWORD:-campusradar_pass}@db:5432/campusradar
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: campusradar_db
+    environment:
+      - POSTGRES_USER=campusradar
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-campusradar_pass}
+      - POSTGRES_DB=campusradar
+    volumes:
+      - campusradar_pgdata:/var/lib/postgresql/data
+    networks:
+      - campusradar_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campusradar -d campusradar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  campusradar_pgdata:
+    name: campusradar_pgdata
+    driver: local

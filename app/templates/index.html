@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CampusRadar – FCFM UCh</title>
+
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            campus: { 50:'#eff6ff', 500:'#1d4ed8', 700:'#1e40af', 900:'#1e3a8a' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet.js (mapa) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Font Awesome (íconos) -->
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    /* Scrollbar suave en el feed */
+    #feed-panel { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+    #feed-panel::-webkit-scrollbar { width: 6px; }
+    #feed-panel::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Animación suave para las tarjetas */
+    .card-reporte { transition: box-shadow .15s, transform .15s; }
+    .card-reporte:hover { box-shadow: 0 8px 24px rgba(0,0,0,.12); transform: translateY(-1px); }
+
+    /* Borde izquierdo colorido según estado */
+    .border-estado-nuevo         { border-left: 4px solid #3b82f6; }
+    .border-estado-verificado    { border-left: 4px solid #22c55e; }
+    .border-estado-controvertido { border-left: 4px solid #eab308; }
+    .border-estado-critico       { border-left: 4px solid #ef4444; }
+    .border-estado-expirado      { border-left: 4px solid #9ca3af; }
+    .border-estado-archivado     { border-left: 4px solid #d1d5db; }
+
+    #mapa { height: 340px; z-index: 0; border-radius: 0.75rem; }
+
+    /* Toast notifications */
+    #toast { transition: opacity .3s; }
+  </style>
+</head>
+
+<body class="h-full bg-slate-50 text-slate-800">
+
+<!-- ══════════════════════════════════════════════════════════════════
+     NAVBAR
+═══════════════════════════════════════════════════════════════════ -->
+<nav class="bg-campus-900 shadow-lg sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
+
+    <div class="flex items-center gap-3">
+      <div class="bg-blue-500 rounded-lg p-1.5">
+        <i class="fa-solid fa-radar text-white text-lg"></i>
+      </div>
+      <span class="text-white font-bold text-xl tracking-tight">CampusRadar</span>
+      <span class="hidden sm:inline text-blue-300 text-xs ml-1">FCFM · UCh</span>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <!-- Nivel de reputación -->
+      <div class="hidden sm:flex items-center gap-2">
+        <div class="h-2 w-24 bg-blue-900 rounded-full overflow-hidden">
+          <div class="h-full bg-blue-400 rounded-full"
+               style="width: {{ [usuario.puntaje_reputacion, 100] | min }}%"></div>
+        </div>
+        <span class="text-blue-200 text-xs font-medium">{{ usuario.puntaje_reputacion }}pts</span>
+      </div>
+
+      <!-- Avatar + nombre -->
+      <div class="flex items-center gap-2 cursor-pointer group"
+           onclick="togglePanel('panel-usuario')">
+        <div class="bg-blue-500 rounded-full h-8 w-8 flex items-center justify-center text-white font-bold text-sm select-none">
+          {{ usuario.nombre[0] | upper }}
+        </div>
+        <span class="text-white text-sm hidden sm:inline">{{ usuario.nombre }}</span>
+        <i class="fa-solid fa-chevron-down text-blue-300 text-xs"></i>
+      </div>
+
+      <!-- Notificaciones -->
+      <a href="/web/notificaciones" class="relative text-blue-200 hover:text-white"
+         title="Notificaciones">
+        <i class="fa-regular fa-bell text-lg"></i>
+        {% if no_leidas and no_leidas > 0 %}
+        <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold
+                     rounded-full h-4 min-w-[1rem] px-1 flex items-center justify-center">{{ no_leidas }}</span>
+        {% endif %}
+      </a>
+
+      <a href="/web/logout"
+         class="text-blue-300 hover:text-white text-sm transition-colors"
+         title="Cerrar sesión">
+        <i class="fa-solid fa-right-from-bracket"></i>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- Toast -->
+<div id="toast"
+     class="fixed top-16 right-4 z-[9999] bg-slate-800 text-white text-sm px-4 py-3
+            rounded-xl shadow-xl hidden opacity-0 max-w-xs">
+  <span id="toast-msg"></span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     LAYOUT PRINCIPAL (3 columnas en desktop)
+═══════════════════════════════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6
+            grid grid-cols-1 lg:grid-cols-[300px_1fr_300px] gap-6">
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       COLUMNA IZQUIERDA: Panel de usuario + Filtros
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <aside class="space-y-4">
+
+    <!-- Panel del usuario -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="bg-gradient-to-br from-blue-500 to-blue-700 rounded-full h-14 w-14
+                    flex items-center justify-center text-white text-2xl font-bold shadow-md">
+          {{ usuario.nombre[0] | upper }}
+        </div>
+        <div>
+          <p class="font-bold text-slate-800 leading-tight">{{ usuario.nombre }}</p>
+          <p class="text-slate-500 text-xs">{{ usuario.email }}</p>
+          <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold
+            {% if usuario.rol == 'administrador' %}bg-purple-100 text-purple-700
+            {% elif usuario.rol == 'moderador' %}bg-orange-100 text-orange-700
+            {% else %}bg-blue-100 text-blue-700{% endif %}">
+            <i class="fa-solid
+              {% if usuario.rol == 'administrador' %}fa-crown
+              {% elif usuario.rol == 'moderador' %}fa-shield-halved
+              {% else %}fa-user-graduate{% endif %} mr-1"></i>
+            {{ usuario.rol | capitalize }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Barra de reputación -->
+      <div class="mb-1 flex justify-between text-xs text-slate-500">
+        <span>Reputación</span>
+        <span class="font-semibold">
+          {{ usuario.nivel_reputacion | capitalize }}
+          · {{ usuario.puntaje_reputacion }}/100
+        </span>
+      </div>
+      <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+        <div class="h-full rounded-full transition-all duration-500
+          {% if usuario.puntaje_reputacion >= 80 %}bg-green-500
+          {% elif usuario.puntaje_reputacion >= 40 %}bg-blue-500
+          {% elif usuario.puntaje_reputacion >= 15 %}bg-yellow-400
+          {% else %}bg-red-400{% endif %}"
+          style="width: {{ usuario.puntaje_reputacion }}%">
+        </div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
+        <div class="bg-slate-50 rounded-xl py-2">
+          <p class="font-bold text-slate-800 text-lg">{{ reportes | length }}</p>
+          <p>Activos</p>
+        </div>
+        <div class="bg-slate-50 rounded-xl py-2">
+          <p class="font-bold text-slate-800 text-lg">
+            {{ reportes | selectattr('autor_id', 'equalto', usuario.id) | list | length }}
+          </p>
+          <p>Míos</p>
+        </div>
+        <div class="bg-slate-50 rounded-xl py-2">
+          <p class="font-bold text-slate-800 text-lg">
+            {{ reportes | selectattr('estado', 'equalto', 'verificado') | list | length }}
+          </p>
+          <p>Verif.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtros rápidos -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+      <h3 class="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-filter text-blue-500"></i> Filtrar feed
+      </h3>
+      <div class="space-y-1.5">
+        {%- set filtros = [
+          ('todos',         'Todos',                 'fa-list',            'slate'),
+          ('nuevo',         'Nuevos',                'fa-circle-dot',      'blue'),
+          ('verificado',    'Verificados',           'fa-circle-check',    'green'),
+          ('critico',       'Críticos',              'fa-triangle-exclamation','red'),
+          ('controvertido', 'Controvertidos',        'fa-scale-balanced',  'yellow'),
+          ('expirado',      'Expirados',             'fa-clock',           'gray')
+        ] -%}
+        {%- for val, label, icon, color in filtros -%}
+        <button onclick="filtrarPorEstado('{{ val }}')"
+                data-filtro="{{ val }}"
+                class="filtro-btn w-full text-left px-3 py-2 rounded-xl text-sm
+                       transition-colors hover:bg-{{ color }}-50
+                       flex items-center gap-2 text-slate-600
+                       {% if val == 'todos' %}bg-blue-50 text-blue-700 font-semibold{% endif %}">
+          <i class="fa-solid {{ icon }} w-4 text-{{ color }}-500"></i>
+          {{ label }}
+          <span class="ml-auto text-xs font-bold text-slate-400
+            {% if val != 'todos' %}badge-{{ val }}{% endif %}">
+            {%- if val == 'todos' -%}{{ reportes | length }}
+            {%- else -%}{{ reportes | selectattr('estado','equalto',val) | list | length }}{%- endif -%}
+          </span>
+        </button>
+        {%- endfor -%}
+      </div>
+    </div>
+
+    <!-- Leyenda de estados -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+        Estados
+      </h3>
+      {%- for estado, cfg in estado_config.items() -%}
+      <div class="flex items-center gap-2 text-xs text-slate-600 mb-1.5">
+        <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0
+          border-estado-{{ estado }}"
+          style="background:
+            {{ {'nuevo':'#3b82f6','verificado':'#22c55e','controvertido':'#eab308',
+                'critico':'#ef4444','expirado':'#9ca3af','archivado':'#d1d5db'}[estado] }}">
+        </span>
+        {{ cfg.label }}
+      </div>
+      {%- endfor -%}
+    </div>
+
+  </aside>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       COLUMNA CENTRAL: Feed de reportes
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <main class="flex flex-col gap-4">
+
+    <!-- Buscador -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 px-4 py-3
+                flex items-center gap-3">
+      <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+      <input id="buscador" type="text" placeholder="Buscar en el feed…"
+             oninput="filtrarTexto(this.value)"
+             class="flex-1 text-sm outline-none text-slate-700 placeholder-slate-400" />
+      <span id="contador-feed" class="text-xs text-slate-400 font-medium">
+        {{ reportes | length }} reportes
+      </span>
+    </div>
+
+    <!-- Feed de tarjetas -->
+    <div id="feed-panel" class="space-y-3 overflow-y-auto max-h-[calc(100vh-12rem)]
+                                pr-1 pb-2">
+
+      {%- if not reportes -%}
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100
+                  p-12 text-center text-slate-400">
+        <i class="fa-solid fa-inbox text-5xl mb-4 opacity-30"></i>
+        <p class="font-semibold text-slate-500">No hay reportes activos</p>
+        <p class="text-sm mt-1">¡Sé el primero en publicar algo!</p>
+      </div>
+      {%- endif -%}
+
+      {%- for r in reportes -%}
+      <div class="card-reporte bg-white rounded-2xl shadow-sm border border-slate-100
+                  border-estado-{{ r.estado }} overflow-hidden"
+           data-estado="{{ r.estado }}"
+           data-texto="{{ (r.descripcion ~ ' ' ~ r.ubicacion.edificio ~ ' ' ~ (r.tags | join(' '))) | lower }}">
+
+        <!-- Header de la tarjeta -->
+        <div class="px-5 pt-4 pb-2 flex items-start justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <!-- Badge de estado + tipo -->
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <span class="px-2 py-0.5 rounded-full text-xs font-bold
+                           {{ estado_config[r.estado].badge }}">
+                {{ estado_config[r.estado].label | upper }}
+              </span>
+              <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs">
+                {{ r.tipo | replace('_', ' ') | title }}
+              </span>
+              {%- if r.prioridad >= 100 -%}
+              <span class="px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
+                <i class="fa-solid fa-circle-exclamation mr-1"></i>EMERGENCIA
+              </span>
+              {%- endif -%}
+            </div>
+
+            <!-- Descripción -->
+            <p class="text-slate-800 font-medium text-sm leading-snug line-clamp-2">
+              {{ r.descripcion }}
+            </p>
+          </div>
+
+          <!-- Prioridad (solo si es alta) -->
+          {%- if r.prioridad > 5 -%}
+          <div class="flex-shrink-0 bg-red-50 text-red-600 rounded-xl px-2 py-1
+                      text-center text-xs font-bold leading-tight">
+            <i class="fa-solid fa-arrow-up block mb-0.5"></i>
+            {{ r.prioridad }}
+          </div>
+          {%- endif -%}
+        </div>
+
+        <!-- Ubicación y tags -->
+        <div class="px-5 pb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          <span>
+            <i class="fa-solid fa-location-dot text-blue-400 mr-1"></i>
+            {{ r.ubicacion.edificio }}
+            {%- if r.ubicacion.piso %} · Piso {{ r.ubicacion.piso }}{% endif %}
+          </span>
+          <span>
+            <i class="fa-regular fa-clock text-slate-400 mr-1"></i>
+            <span class="tiempo-relativo" data-ts="{{ r.timestamp }}"></span>
+          </span>
+          <span class="text-slate-400">
+            <i class="fa-solid fa-user text-slate-300 mr-1"></i>{{ r.autor_nombre }}
+          </span>
+          {%- for tag in r.tags[:3] -%}
+          <span class="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md">#{{ tag }}</span>
+          {%- endfor -%}
+        </div>
+
+        <!-- Métricas + acciones -->
+        <div class="px-5 py-3 bg-slate-50 border-t border-slate-100
+                    flex items-center justify-between flex-wrap gap-2">
+
+          <!-- Contadores -->
+          <div class="flex items-center gap-4 text-sm">
+            <span class="flex items-center gap-1 text-green-600 font-semibold">
+              <i class="fa-solid fa-circle-check"></i>
+              <span id="conf-{{ r.id }}">{{ r.total_confirmaciones }}</span>
+            </span>
+            <span class="flex items-center gap-1 text-red-500 font-semibold">
+              <i class="fa-solid fa-circle-xmark"></i>
+              <span id="desm-{{ r.id }}">{{ r.total_desmentidos }}</span>
+            </span>
+            <span class="flex items-center gap-1 text-slate-400 text-xs">
+              <i class="fa-regular fa-comment"></i>
+              {{ r.total_denuncias }}
+            </span>
+          </div>
+
+          <!-- Botones de acción -->
+          <div class="flex items-center gap-1.5">
+            {%- if r.autor_id != usuario.id -%}
+            <button onclick="votar({{ r.id }}, 'confirmar', this)"
+                    class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                           bg-green-500 hover:bg-green-600 text-white transition-colors
+                           flex items-center gap-1.5 shadow-sm"
+                    title="Confirmar: este reporte es verídico">
+              <i class="fa-solid fa-thumbs-up"></i> Confirmar
+            </button>
+            <button onclick="votar({{ r.id }}, 'desmentir', this)"
+                    class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                           bg-red-500 hover:bg-red-600 text-white transition-colors
+                           flex items-center gap-1.5 shadow-sm"
+                    title="Desmentir: este reporte es falso o ya no aplica">
+              <i class="fa-solid fa-thumbs-down"></i> Desmentir
+            </button>
+            {%- endif -%}
+
+            <button onclick="abrirComentario({{ r.id }})"
+                    class="px-3 py-1.5 rounded-xl text-xs font-semibold
+                           bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors
+                           flex items-center gap-1.5">
+              <i class="fa-regular fa-comment-dots"></i> Comentar
+            </button>
+
+            {%- if tiene_permiso_moderar -%}
+            <button onclick="archivar({{ r.id }}, this)"
+                    class="px-2.5 py-1.5 rounded-xl text-xs font-semibold
+                           bg-gray-200 hover:bg-gray-300 text-gray-600 transition-colors"
+                    title="Archivar reporte (moderador)">
+              <i class="fa-solid fa-archive"></i>
+            </button>
+            {%- endif -%}
+          </div>
+        </div>
+
+        <!-- Panel de comentario (oculto por defecto) -->
+        <div id="panel-comentario-{{ r.id }}"
+             class="hidden px-5 py-3 border-t border-slate-100 bg-white">
+          <div class="flex gap-2">
+            <input type="text"
+                   id="txt-comentario-{{ r.id }}"
+                   placeholder="Escribe tu comentario…"
+                   class="flex-1 border border-slate-200 rounded-xl px-3 py-1.5 text-sm
+                          focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            <button onclick="enviarComentario({{ r.id }})"
+                    class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white
+                           rounded-xl text-sm transition-colors">
+              <i class="fa-solid fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+      {%- endfor -%}
+
+    </div><!-- /feed-panel -->
+  </main>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       COLUMNA DERECHA: Crear reporte + Mapa
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <aside class="space-y-4">
+
+    <!-- Formulario de nuevo reporte -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <div class="bg-blue-500 rounded-lg p-1">
+          <i class="fa-solid fa-plus text-white text-sm"></i>
+        </div>
+        Nuevo Reporte
+      </h2>
+
+      <form id="form-reporte" class="space-y-3" onsubmit="submitReporte(event)">
+
+        <!-- Tipo de evento -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Tipo de evento <span class="text-red-500">*</span>
+          </label>
+          <select name="tipo" required
+                  class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white
+                         text-slate-700">
+            <option value="" disabled selected>Seleccionar…</option>
+            {%- set tipo_labels = {
+              'infraestructura': '🔧 Infraestructura',
+              'actividad_extraprogramatica': '🎉 Actividad extraprogramática',
+              'alerta_emergencia': '🚨 Alerta de emergencia',
+              'evento_universitario': '🎓 Evento universitario',
+              'informacion_logistica': '🗺️ Información logística'
+            } -%}
+            {%- for tipo in tipos_reporte -%}
+            <option value="{{ tipo }}">{{ tipo_labels.get(tipo, tipo | title) }}</option>
+            {%- endfor -%}
+          </select>
+        </div>
+
+        <!-- Descripción -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Descripción <span class="text-red-500">*</span>
+          </label>
+          <textarea name="descripcion" rows="3" required minlength="5" maxlength="1000"
+                    placeholder="¿Qué está pasando? Sé específico y conciso."
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none
+                           text-slate-700 placeholder-slate-400"></textarea>
+        </div>
+
+        <!-- Ubicación: Edificio -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Edificio / Lugar <span class="text-red-500">*</span>
+          </label>
+          <select name="edificio" required
+                  class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white
+                         text-slate-700">
+            <option value="" disabled selected>Seleccionar edificio…</option>
+            {%- for edif in [
+              'Beauchef 851 (Torre)',
+              'Beauchef 850 (Beauchef Poniente)',
+              'Hall Central',
+              'Hall Sur',
+              'Biblioteca Central',
+              'Estadio Universitario',
+              'Casino Central',
+              'Mecánica (DIM)',
+              'Eléctrica (DIE)',
+              'Civil (DIC)',
+              'Química y Farmacia (IQ)',
+              'Minas (DIMIN)',
+              'Geo/Ambiental (GEO)',
+              'Astronomía',
+              'Física',
+              'Matemáticas',
+              'Computación (DCC)',
+              'Otro'
+            ] -%}
+            <option value="{{ edif }}">{{ edif }}</option>
+            {%- endfor -%}
+          </select>
+        </div>
+
+        <!-- Piso -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Piso</label>
+          <input type="number" name="piso" min="-2" max="30"
+                 placeholder="Ej: 2"
+                 class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                        focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700" />
+        </div>
+
+        <!-- Zona / referencia -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Zona / referencia
+          </label>
+          <input type="text" name="zona"
+                 placeholder="Ej: Pasillo central, sala 202…"
+                 class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                        focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700" />
+        </div>
+
+        <!-- Tags -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Tags <span class="text-slate-400 font-normal">(separados por coma)</span>
+          </label>
+          <input type="text" name="tags"
+                 placeholder="ej: microondas, cocina, piso2"
+                 class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                        focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700" />
+        </div>
+
+        <!-- Coordenadas (ocultas, se llenan desde el mapa) -->
+        <input type="hidden" id="input-lat" name="latitud" />
+        <input type="hidden" id="input-lon" name="longitud" />
+
+        <p class="text-xs text-slate-400 flex items-center gap-1">
+          <i class="fa-solid fa-location-crosshairs text-blue-400"></i>
+          Haz clic en el mapa para fijar coordenadas (opcional)
+        </p>
+
+        <button type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                       py-2.5 rounded-xl transition-colors text-sm shadow-sm
+                       flex items-center justify-center gap-2">
+          <i class="fa-solid fa-paper-plane"></i>
+          Publicar reporte
+        </button>
+      </form>
+    </div>
+
+    <!-- Mapa -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+      <h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-map-location-dot text-blue-500"></i>
+        Mapa del campus
+      </h3>
+      <div id="mapa"></div>
+      <p class="text-xs text-slate-400 mt-2 text-center">
+        Beauchef 851, Santiago · OpenStreetMap
+      </p>
+    </div>
+
+  </aside>
+
+</div><!-- /grid -->
+
+<!-- ══════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════════════════════════ -->
+<script>
+// ─── Constantes globales ────────────────────────────────────────────────────
+const TOKEN = "{{ token }}";
+const USUARIO_ID = {{ usuario.id }};
+const HEADERS = {
+  "Content-Type": "application/json",
+  "Authorization": "Bearer " + TOKEN
+};
+
+// Datos de reportes para el mapa (pasados desde Jinja2)
+const REPORTES_GEO = {{ reportes | tojson | safe }};
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg, tipo = "info") {
+  const t = document.getElementById("toast");
+  const m = document.getElementById("toast-msg");
+  const colores = { info: "bg-slate-800", ok: "bg-green-600", err: "bg-red-600" };
+  t.className = t.className.replace(/bg-\w+-\d+/g, colores[tipo]);
+  m.textContent = msg;
+  t.classList.remove("hidden", "opacity-0");
+  t.classList.add("opacity-100");
+  setTimeout(() => {
+    t.classList.remove("opacity-100");
+    t.classList.add("opacity-0");
+    setTimeout(() => t.classList.add("hidden"), 300);
+  }, 3000);
+}
+
+// ─── Tiempos relativos ──────────────────────────────────────────────────────
+function tiempoRelativo(isoStr) {
+  const ahora = Date.now();
+  const ts    = new Date(isoStr).getTime();
+  const diff  = Math.floor((ahora - ts) / 1000);
+  if (diff < 60)   return "hace " + diff + "s";
+  if (diff < 3600) return "hace " + Math.floor(diff/60) + "m";
+  if (diff < 86400)return "hace " + Math.floor(diff/3600) + "h";
+  return "hace " + Math.floor(diff/86400) + "d";
+}
+document.querySelectorAll(".tiempo-relativo").forEach(el => {
+  el.textContent = tiempoRelativo(el.dataset.ts);
+});
+
+// ─── Filtros ────────────────────────────────────────────────────────────────
+let filtroActivo = "todos";
+let textoBusqueda = "";
+
+function aplicarFiltros() {
+  const tarjetas = document.querySelectorAll(".card-reporte");
+  let visibles = 0;
+  tarjetas.forEach(card => {
+    const estado  = card.dataset.estado;
+    const texto   = card.dataset.texto;
+    const okEstado = filtroActivo === "todos" || estado === filtroActivo;
+    const okTexto  = !textoBusqueda || texto.includes(textoBusqueda);
+    if (okEstado && okTexto) { card.style.display = ""; visibles++; }
+    else                     { card.style.display = "none"; }
+  });
+  document.getElementById("contador-feed").textContent = visibles + " reportes";
+}
+
+function filtrarPorEstado(val) {
+  filtroActivo = val;
+  document.querySelectorAll(".filtro-btn").forEach(btn => {
+    btn.classList.toggle("bg-blue-50", btn.dataset.filtro === val);
+    btn.classList.toggle("text-blue-700", btn.dataset.filtro === val);
+    btn.classList.toggle("font-semibold", btn.dataset.filtro === val);
+  });
+  aplicarFiltros();
+}
+
+function filtrarTexto(val) {
+  textoBusqueda = val.toLowerCase().trim();
+  aplicarFiltros();
+}
+
+// ─── Votar (confirmar / desmentir) ─────────────────────────────────────────
+async function votar(reporteId, accion, btn) {
+  btn.disabled = true;
+  btn.classList.add("opacity-60");
+  try {
+    const res = await fetch(`/reportes/${reporteId}/${accion}`, {
+      method: "POST", headers: HEADERS
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Actualizar contadores en la tarjeta
+      document.getElementById(`conf-${reporteId}`).textContent = data.total_confirmaciones;
+      document.getElementById(`desm-${reporteId}`).textContent = data.total_desmentidos;
+
+      // Deshabilitar ambos botones de voto
+      const card = btn.closest(".card-reporte");
+      card.querySelectorAll(".btn-accion").forEach(b => {
+        b.disabled = true;
+        b.classList.add("opacity-40", "cursor-not-allowed");
+      });
+
+      const etiqueta = accion === "confirmar" ? "✓ Confirmado" : "✗ Desmentido";
+      showToast(etiqueta + " · Estado: " + data.estado, "ok");
+
+      // Actualizar badge de estado de la tarjeta
+      const badgeEl = card.querySelector("[class*='badge']");
+      if (badgeEl) badgeEl.textContent = data.estado.toUpperCase();
+
+    } else {
+      const err = await res.json();
+      showToast("Error: " + (err.detail || "No se pudo votar"), "err");
+      btn.disabled = false;
+      btn.classList.remove("opacity-60");
+    }
+  } catch (e) {
+    showToast("Error de conexión", "err");
+    btn.disabled = false;
+    btn.classList.remove("opacity-60");
+  }
+}
+
+// ─── Comentar ───────────────────────────────────────────────────────────────
+function abrirComentario(reporteId) {
+  const panel = document.getElementById(`panel-comentario-${reporteId}`);
+  panel.classList.toggle("hidden");
+  if (!panel.classList.contains("hidden")) {
+    document.getElementById(`txt-comentario-${reporteId}`).focus();
+  }
+}
+
+async function enviarComentario(reporteId) {
+  const input = document.getElementById(`txt-comentario-${reporteId}`);
+  const texto = input.value.trim();
+  if (!texto) return;
+
+  try {
+    const res = await fetch(`/reportes/${reporteId}/comentar`, {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ texto })
+    });
+    if (res.ok) {
+      input.value = "";
+      document.getElementById(`panel-comentario-${reporteId}`).classList.add("hidden");
+      showToast("Comentario publicado", "ok");
+    } else {
+      const err = await res.json();
+      showToast("Error: " + (err.detail || "No se pudo comentar"), "err");
+    }
+  } catch { showToast("Error de conexión", "err"); }
+}
+
+// ─── Archivar (moderador) ───────────────────────────────────────────────────
+async function archivar(reporteId, btn) {
+  if (!confirm("¿Archivar este reporte? Esta acción es permanente.")) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/reportes/${reporteId}/archivar`, {
+      method: "DELETE", headers: HEADERS
+    });
+    if (res.ok || res.status === 204) {
+      const card = btn.closest(".card-reporte");
+      card.style.opacity = "0.4";
+      card.style.pointerEvents = "none";
+      showToast("Reporte archivado", "ok");
+    } else {
+      const err = await res.json();
+      showToast("Error: " + (err.detail || "No se pudo archivar"), "err");
+      btn.disabled = false;
+    }
+  } catch { showToast("Error de conexión", "err"); btn.disabled = false; }
+}
+
+// ─── Crear reporte ──────────────────────────────────────────────────────────
+async function submitReporte(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd   = new FormData(form);
+
+  const tags = (fd.get("tags") || "")
+    .split(",")
+    .map(t => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  const payload = {
+    tipo:        fd.get("tipo"),
+    descripcion: fd.get("descripcion"),
+    ubicacion: {
+      edificio: fd.get("edificio"),
+      piso:     fd.get("piso") ? parseInt(fd.get("piso")) : null,
+      zona:     fd.get("zona") || null,
+      latitud:  fd.get("latitud") ? parseFloat(fd.get("latitud")) : null,
+      longitud: fd.get("longitud") ? parseFloat(fd.get("longitud")) : null,
+    },
+    tags,
+  };
+
+  const btn = form.querySelector("button[type=submit]");
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Publicando…';
+
+  try {
+    const res = await fetch("/reportes/", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      showToast("¡Reporte publicado! Recargando…", "ok");
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      const err = await res.json();
+      const detalle = Array.isArray(err.detail)
+        ? err.detail.map(d => d.msg).join(", ")
+        : (err.detail || "Error desconocido");
+      showToast("Error: " + detalle, "err");
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>Publicar reporte';
+    }
+  } catch {
+    showToast("Error de conexión con el servidor", "err");
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>Publicar reporte';
+  }
+}
+
+// ─── Mapa Leaflet ───────────────────────────────────────────────────────────
+const CAMPUS_LAT  = -33.4572;
+const CAMPUS_LON  = -70.6632;
+
+const mapa = L.map("mapa").setView([CAMPUS_LAT, CAMPUS_LON], 16);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+  maxZoom: 19,
+}).addTo(mapa);
+
+// Colores de marcadores por estado
+const COLOR_ESTADO = {
+  nuevo: "#3b82f6", verificado: "#22c55e", controvertido: "#eab308",
+  critico: "#ef4444", expirado: "#9ca3af", archivado: "#d1d5db"
+};
+
+function iconoEstado(estado) {
+  const color = COLOR_ESTADO[estado] || "#64748b";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+    <ellipse cx="14" cy="34" rx="5" ry="2" fill="rgba(0,0,0,0.2)"/>
+    <path d="M14 0C8.477 0 4 4.477 4 10c0 7.5 10 22 10 22s10-14.5 10-22C24 4.477 19.523 0 14 0z"
+          fill="${color}" stroke="white" stroke-width="1.5"/>
+    <circle cx="14" cy="10" r="5" fill="white" opacity="0.85"/>
+  </svg>`;
+  return L.divIcon({
+    html: svg, className: "", iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -36]
+  });
+}
+
+// Agregar marcadores de reportes con coordenadas
+REPORTES_GEO.forEach(r => {
+  const lat = r.ubicacion ? r.ubicacion.latitud : null;
+  const lon = r.ubicacion ? r.ubicacion.longitud : null;
+  if (lat && lon) {
+    L.marker([lat, lon], { icon: iconoEstado(r.estado) })
+      .addTo(mapa)
+      .bindPopup(`
+        <div style="min-width:180px;font-family:sans-serif">
+          <strong style="font-size:13px">${r.descripcion.slice(0,60)}…</strong><br>
+          <span style="font-size:11px;color:#64748b">
+            📍 ${r.ubicacion.edificio}
+            ${r.ubicacion.piso ? '· Piso ' + r.ubicacion.piso : ''}
+          </span><br>
+          <span style="font-size:11px;background:${COLOR_ESTADO[r.estado]};color:white;
+                       padding:1px 6px;border-radius:9px">
+            ${r.estado.toUpperCase()}
+          </span>
+          · ✓ ${r.total_confirmaciones} ✗ ${r.total_desmentidos}
+        </div>
+      `);
+  }
+});
+
+// Click en mapa → rellenar coordenadas del formulario
+let markerSeleccion = null;
+mapa.on("click", e => {
+  const { lat, lng } = e.latlng;
+  document.getElementById("input-lat").value = lat.toFixed(6);
+  document.getElementById("input-lon").value = lng.toFixed(6);
+  if (markerSeleccion) mapa.removeLayer(markerSeleccion);
+  markerSeleccion = L.marker([lat, lng], {
+    icon: L.divIcon({
+      html: `<div style="width:16px;height:16px;background:#1d4ed8;border:2px solid white;
+                          border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>`,
+      className: "", iconSize: [16, 16], iconAnchor: [8, 8]
+    })
+  }).addTo(mapa).bindPopup("📍 Ubicación seleccionada").openPopup();
+});
+
+// ─── Panel colapsable (mobile) ──────────────────────────────────────────────
+function togglePanel(id) {
+  // solo en mobile; en desktop el grid siempre lo muestra
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle("hidden");
+}
+</script>
+
+</body>
+</html>
