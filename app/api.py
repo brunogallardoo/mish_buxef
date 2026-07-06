@@ -174,16 +174,6 @@ _TIPO_A_CLASE_DOMINIO = {
 }
 
 
-
-class InteraccionOut(BaseModel):
-    id: int
-    tipo: str
-    autor_id: int
-    autor_nombre: str
-    timestamp: datetime
-    texto: Optional[str] = None
-    motivo: Optional[str] = None
-
 class ReporteCreate(BaseModel):
     tipo: str
     descripcion: str = Field(..., min_length=5, max_length=1000)
@@ -213,7 +203,6 @@ class ReporteOut(BaseModel):
     timestamp: datetime
     autor_id: int
     autor_nombre: str
-    comentarios: list[InteraccionOut] = Field(default_factory=list)  
 
 
 class ReporteListOut(BaseModel):
@@ -231,6 +220,14 @@ class DenunciaCreate(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=300)
 
 
+class InteraccionOut(BaseModel):
+    id: int
+    tipo: str
+    autor_id: int
+    autor_nombre: str
+    timestamp: datetime
+    texto: Optional[str] = None
+    motivo: Optional[str] = None
 
 
 # tag
@@ -380,17 +377,6 @@ def _reporte_a_schema(reporte: Reporte) -> ReporteOut:
         timestamp=reporte.timestamp,
         autor_id=reporte.autor.id,
         autor_nombre=reporte.autor.nombre,
-        comentarios=[
-            InteraccionOut(
-                id=c.id,
-                tipo="comentario",
-                autor_id=c.autor.id,
-                autor_nombre=c.autor.nombre,
-                timestamp=c.timestamp,
-                texto=c.texto,
-            )
-            for c in reporte.comentarios
-        ],
     )
 
 

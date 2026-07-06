@@ -402,15 +402,7 @@
             </button>
           </div>
         </div>
-        <div id="comentarios-{{ r.id }}"
-            class="px-5 py-2 border-t border-slate-100 bg-white space-y-1.5 {% if not r.comentarios %}hidden{% endif %}">
-          {%- for c in r.comentarios -%}
-          <div class="text-xs text-slate-600">
-            <span class="font-semibold text-slate-700">{{ c.autor_nombre }}:</span>
-            <span>{{ c.texto }}</span>
-          </div>
-          {%- endfor -%}
-        </div>
+
       </div>
       {%- endfor -%}
 
@@ -479,21 +471,23 @@
                          text-slate-700">
             <option value="" disabled selected>Seleccionar edificio…</option>
             {%- for edif in [
-              'Beauchef 851',
-              'Beauchef 850',
-              'Edificio Escuela (850)',
-              'Hall Sur (850)',
-              'Biblioteca (850)',                         
-              'Torre Norte (851)',
-              "Edificio Poniente (851)",
-              "Edificio Oriente (851)",
-              'Edificio Eléctrica (850)',
-              'Edificio Civil/Geofísica (850)',
-              'Edificio Química (850)',
-              "Edificio Física (850)",
-              "Edificio Geología (850)",
-              'Casino (Blanco Encalada 2085)',
-              "Gimnasio Domeyko (Blanco Encalada 2085)",
+              'Beauchef 851 (Torre)',
+              'Beauchef 850 (Beauchef Poniente)',
+              'Hall Central',
+              'Hall Sur',
+              'Biblioteca Central',
+              'Estadio Universitario',
+              'Casino Central',
+              'Mecánica (DIM)',
+              'Eléctrica (DIE)',
+              'Civil (DIC)',
+              'Química y Farmacia (IQ)',
+              'Minas (DIMIN)',
+              'Geo/Ambiental (GEO)',
+              'Astronomía',
+              'Física',
+              'Matemáticas',
+              'Computación (DCC)',
               'Otro'
             ] -%}
             <option value="{{ edif }}">{{ edif }}</option>
@@ -702,25 +696,13 @@ async function enviarComentario(reporteId) {
 
   try {
     const res = await fetch(`/reportes/${reporteId}/comentar`, {
-      method: "POST", headers: HEADERS, body: JSON.stringify({ texto })
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ texto })
     });
     if (res.ok) {
-      const data = await res.json();
       input.value = "";
       document.getElementById(`panel-comentario-${reporteId}`).classList.add("hidden");
-
-      const cont = document.getElementById(`comentarios-${reporteId}`);
-      cont.classList.remove("hidden");
-      const linea = document.createElement("div");
-      linea.className = "text-xs text-slate-600";
-      const autor = document.createElement("span");
-      autor.className = "font-semibold text-slate-700";
-      autor.textContent = data.autor_nombre + ": ";
-      const cuerpo = document.createElement("span");
-      cuerpo.textContent = data.texto;
-      linea.append(autor, cuerpo);
-      cont.appendChild(linea);
-
       showToast("Comentario publicado", "ok");
     } else {
       const err = await res.json();
