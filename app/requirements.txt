@@ -1,0 +1,36 @@
+# =============================================================================
+# CampusRadar - Dependencias Python
+# =============================================================================
+# Instalación: pip install -r requirements.txt
+# Para desarrollo: pip install -r requirements.txt -r requirements-dev.txt
+
+# --- Web Framework ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# --- Base de datos ---
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10     # driver PostgreSQL (opcional; para DATABASE_URL=postgresql+psycopg2://...)
+
+# --- Validación y schemas ---
+pydantic==2.10.2
+pydantic[email]==2.10.2     # para EmailStr en schemas de usuario
+pydantic-settings==2.6.1    # configuración tipada desde variables de entorno y .env
+
+# --- Autenticación ---
+passlib[bcrypt]==1.7.4      # hashing de contraseñas con bcrypt
+bcrypt==4.0.1              # pin: passlib 1.7.4 es incompatible con bcrypt>=4.1 (AttributeError __about__)
+python-jose[cryptography]==3.3.0   # generación y validación de JWT
+python-multipart==0.0.20    # requerido por OAuth2PasswordRequestForm de FastAPI
+
+# --- Templates HTML (Jinja2) ---
+jinja2==3.1.4
+aiofiles==24.1.0            # para servir archivos estáticos con StaticFiles
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1               # cliente HTTP para TestClient de FastAPI
+
+# --- Utilidades de desarrollo (opcional, no requeridas en producción) ---
+# python-dotenv==1.0.1      # para cargar .env localmente
