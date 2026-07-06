@@ -464,25 +464,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 
+from sqlalchemy.pool import NullPool
+
 def crear_engine(database_url: str = "campusradar.db", echo: bool = False):
-    """
-    Crea un engine de SQLAlchemy a partir de `database_url`, que puede ser:
-
-      - Una URL completa de SQLAlchemy, p.ej.:
-          * 'postgresql+psycopg2://user:pass@host:5432/campusradar'
-          * 'sqlite:////ruta/absoluta/campusradar.db'
-      - Una ruta de archivo simple (sin '://'), interpretada como una base
-        SQLite local: 'campusradar.db' -> 'sqlite:///campusradar.db'.
-
-    Para SQLite se añade `check_same_thread=False` (necesario con uvicorn);
-    para otros motores (PostgreSQL) no se pasa ese connect_arg. Así se migra de
-    SQLite a PostgreSQL cambiando solo `DATABASE_URL`, sin tocar modelos ni
-    repositorios: esa es la ventaja de programar contra el ORM de SQLAlchemy en
-    vez del driver específico.
-    """
     url = database_url if "://" in database_url else f"sqlite:///{database_url}"
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, echo=echo, connect_args=connect_args)
+    is_sqlite = url.startswith("sqlite")
+    connect_args = {"check_same_thread": False} if is_sqlite else {}
+
+    kwargs = dict(echo=echo, connect_args=connect_args, pool_pre_ping=True)
+    if not is_sqlite:
+        # Evita conexiones reutilizadas y muertas entre invocaciones frías.
+        kwargs["poolclass"] = NullPool
+
+    return create_engine(url, **kwargs)
 
 
 def crear_engine_sqlite(ruta_archivo: str = "campusradar.db", echo: bool = False):
