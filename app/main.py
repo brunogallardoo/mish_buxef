@@ -19,8 +19,6 @@ from app.api import app   # noqa: F401
 # el nombre `app` al paquete y pisar la instancia FastAPI importada arriba.
 from app import api_web   # noqa: F401  (side-effect: registra /web/* y sobreescribe /)
 
-from fastapi import FastAPI
-app = FastAPI()  # Vercel buscará este objeto 'app' por defecto
 
 if __name__ == "__main__":
     import uvicorn

@@ -41,15 +41,6 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-
-# 1. Obtiene la ruta exacta de la carpeta donde está este archivo 'app/'
-current_dir = os.path.dirname(os.path.realpath(__file__))
-
-# 2. Une esa ruta con la carpeta 'templates' de forma dinámica
-templates_path = os.path.join(current_dir, "templates")
-
-# 3. Le pasas la ruta segura a FastAPI
-templates = Jinja2Templates(directory=templates_path)
 from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy.orm import Session
