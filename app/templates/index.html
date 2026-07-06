@@ -279,12 +279,21 @@
             <!-- Badge de estado + tipo -->
             <div class="flex flex-wrap items-center gap-2 mb-2">
               <span class="px-2 py-0.5 rounded-full text-xs font-bold
-                           {{ estado_config[r.estado].badge }}">
+                          {{ estado_config[r.estado].badge }}">
                 {{ estado_config[r.estado].label | upper }}
               </span>
               <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs">
                 {{ r.tipo | replace('_', ' ') | title }}
               </span>
+                      <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs">
+                {{ r.tipo | replace('_', ' ') | title }}
+              </span>
+              {%- if r.verificado_por_moderacion -%}
+              <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold
+                          flex items-center gap-1">
+                <i class="fa-solid fa-shield-check"></i> Verificado por moderación
+              </span>
+              {%- endif -%}
               {%- if r.prioridad >= 100 -%}
               <span class="px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
                 <i class="fa-solid fa-circle-exclamation mr-1"></i>EMERGENCIA
@@ -349,28 +358,28 @@
 
           <!-- Botones de acción -->
           <div class="flex items-center gap-1.5">
-           {%- if r.autor_id != usuario.id -%}
-            {%- if r.ya_voto -%}
-            <span class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-200 text-slate-500 flex items-center gap-1.5">
-              <i class="fa-solid fa-check"></i> Ya calificaste
-            </span>
-            {%- else -%}
-            <button onclick="votar({{ r.id }}, 'confirmar', this)"
-                    class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
-                          bg-green-500 hover:bg-green-600 text-white transition-colors
-                          flex items-center gap-1.5 shadow-sm"
-                    title="Confirmar: este reporte es verídico">
-              <i class="fa-solid fa-thumbs-up"></i> Confirmar
-            </button>
-            <button onclick="votar({{ r.id }}, 'desmentir', this)"
-                    class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
-                          bg-red-500 hover:bg-red-600 text-white transition-colors
-                          flex items-center gap-1.5 shadow-sm"
-                    title="Desmentir: este reporte es falso o ya no aplica">
-              <i class="fa-solid fa-thumbs-down"></i> Desmentir
-            </button>
-            {%- endif -%}
+        {%- if r.autor_id != usuario.id -%}
+          {%- if r.ya_voto -%}
+          <span class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-200 text-slate-500 flex items-center gap-1.5">
+            <i class="fa-solid fa-check"></i> Ya calificaste
+          </span>
+          {%- else -%}
+          <button onclick="votar({{ r.id }}, 'confirmar', this)"
+                  class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                        bg-green-500 hover:bg-green-600 text-white transition-colors
+                        flex items-center gap-1.5 shadow-sm"
+                  title="Confirmar: este reporte es verídico">
+            <i class="fa-solid fa-thumbs-up"></i> Confirmar
+          </button>
+          <button onclick="votar({{ r.id }}, 'desmentir', this)"
+                  class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                        bg-red-500 hover:bg-red-600 text-white transition-colors
+                        flex items-center gap-1.5 shadow-sm"
+                  title="Desmentir: este reporte es falso o ya no aplica">
+            <i class="fa-solid fa-thumbs-down"></i> Desmentir
+          </button>
           {%- endif -%}
+        {%- endif -%}
 
             <button onclick="abrirComentario({{ r.id }})"
                     class="px-3 py-1.5 rounded-xl text-xs font-semibold
@@ -378,15 +387,24 @@
                            flex items-center gap-1.5">
               <i class="fa-regular fa-comment-dots"></i> Comentar
             </button>
-
-            {%- if tiene_permiso_moderar -%}
-            <button onclick="archivar({{ r.id }}, this)"
-                    class="px-2.5 py-1.5 rounded-xl text-xs font-semibold
-                           bg-gray-200 hover:bg-gray-300 text-gray-600 transition-colors"
-                    title="Archivar reporte (moderador)">
-              <i class="fa-solid fa-archive"></i>
-            </button>
-            {%- endif -%}
+        {%- if tiene_permiso_moderar -%}
+        {%- if not r.verificado_por_moderacion -%}
+        <button onclick="verificarReporte({{ r.id }}, this)"
+                class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                      bg-emerald-500 hover:bg-emerald-600 text-white transition-colors
+                      flex items-center gap-1.5 shadow-sm"
+                title="Verificar este reporte como veraz">
+          <i class="fa-solid fa-shield-check"></i> Verificar
+        </button>
+        {%- endif -%}
+        <button onclick="archivar({{ r.id }}, this)"
+                class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
+                      bg-gray-200 hover:bg-gray-300 text-gray-600 transition-colors
+                      flex items-center gap-1.5 shadow-sm"
+                title="Archivar reporte (moderador)">
+          <i class="fa-solid fa-archive"></i>
+        </button>
+        {%- endif -%}
           </div>
         </div>
         <div id="comentarios-{{ r.id }}"
@@ -483,23 +501,23 @@
                          text-slate-700">
             <option value="" disabled selected>Seleccionar edificio…</option>
             {%- for edif in [
-              'Beauchef 851 (Torre)',
-              'Beauchef 850 (Beauchef Poniente)',
-              'Hall Central',
-              'Hall Sur',
-              'Biblioteca Central',
-              'Estadio Universitario',
-              'Casino Central',
-              'Mecánica (DIM)',
-              'Eléctrica (DIE)',
-              'Civil (DIC)',
-              'Química y Farmacia (IQ)',
-              'Minas (DIMIN)',
-              'Geo/Ambiental (GEO)',
-              'Astronomía',
-              'Física',
-              'Matemáticas',
-              'Computación (DCC)',
+              'Beauchef 851',
+              "Torre Norte (851)",
+              "Edificio Oriente (851)",
+              "Edificio Poniente (851)",
+              'Beauchef 850',
+              'Edificio Escuela (850)',
+              'Hall Sur (850)',
+              'Biblioteca Central (850)',
+              'Edificio Eléctrica (850)',
+              "Edificio Civil/Geofísica (850)",
+              "Edificio Química (850)",
+              "Edificio Física (850)",
+              "Edificio Geología (850)",
+
+              'Casino (Blanco Encalada)',
+              "Gimnasio Domeyko (Blanco Encalada)",
+
               'Otro'
             ] -%}
             <option value="{{ edif }}">{{ edif }}</option>
@@ -764,6 +782,38 @@ async function archivar(reporteId, btn) {
       btn.disabled = false;
     }
   } catch { showToast("Error de conexión", "err"); btn.disabled = false; }
+}
+
+async function verificarReporte(reporteId, btn) {
+  btn.disabled = true;
+  btn.classList.add("opacity-60");
+  try {
+    const res = await fetch(`/reportes/${reporteId}/verificar`, {
+      method: "PATCH", headers: HEADERS
+    });
+    if (res.ok) {
+      const data = await res.json();
+      showToast("Reporte verificado", "ok");
+
+      const card = btn.closest(".card-reporte");
+      const badgeEl = card.querySelector("[class*='badge']");
+      if (badgeEl) badgeEl.textContent = data.estado.toUpperCase();
+
+      // Ocultar el botón de verificar (ya no aplica) y refrescar clases de borde
+      btn.remove();
+      card.className = card.className.replace(/border-estado-\w+/, `border-estado-${data.estado}`);
+      card.dataset.estado = data.estado;
+    } else {
+      const err = await res.json();
+      showToast("Error: " + (err.detail || "No se pudo verificar"), "err");
+      btn.disabled = false;
+      btn.classList.remove("opacity-60");
+    }
+  } catch {
+    showToast("Error de conexión", "err");
+    btn.disabled = false;
+    btn.classList.remove("opacity-60");
+  }
 }
 
 // ─── Crear reporte ──────────────────────────────────────────────────────────

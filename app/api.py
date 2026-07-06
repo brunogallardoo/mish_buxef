@@ -205,7 +205,7 @@ class ReporteOut(BaseModel):
     autor_nombre: str
     ya_voto: bool = False   # NUEVO
     comentarios: list[InteraccionOut] = Field(default_factory=list)   # NUEVO
-
+    verificado_por_moderacion: bool = False
 
 class ReporteListOut(BaseModel):
     total: int
@@ -379,6 +379,7 @@ def _reporte_a_schema(reporte: Reporte, usuario_id: Optional[int] = None) -> Rep
         timestamp=reporte.timestamp,
         autor_id=reporte.autor.id,
         autor_nombre=reporte.autor.nombre,
+        verificado_por_moderacion=reporte.fue_verificado_por_moderacion,
         ya_voto=reporte.usuario_ya_voto(usuario_id) if usuario_id is not None else False,
                 comentarios=[
             InteraccionOut(
@@ -702,6 +703,24 @@ def archivar_reporte(reporte_id: int, db: DbDep, current_user: ModDep):
         uow.reportes.actualizar_estado_forzado(reporte)
         uow.commit()
 
+@router_reportes.patch("/{reporte_id}/verificar", response_model=ReporteOut)
+def verificar_reporte(reporte_id: int, db: DbDep, current_user: ModDep):
+    """Verifica un reporte manualmente. Solo moderadores y admins."""
+    from app.repositories import ReporteRepository
+    repo = ReporteRepository(db)
+    reporte = repo.obtener_por_id(reporte_id)
+    if reporte is None:
+        raise HTTPException(status_code=404, detail="Reporte no encontrado.")
+    try:
+        reporte.verificar(current_user)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    with UnitOfWork(SessionFactory) as uow:
+        uow.reportes.actualizar_estado_forzado(reporte)
+        uow.commit()
+
+    return _reporte_a_schema(reporte, usuario_id=current_user.id)
 
 #router (reportes-id-interacciones)
 router_interacciones = APIRouter(

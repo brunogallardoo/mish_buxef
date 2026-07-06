@@ -59,7 +59,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import or_, select, func
 from sqlalchemy.orm import Session
 
 
@@ -605,6 +605,7 @@ class ReporteRepository:
         stmt = select(ReporteORM).where(ReporteORM.tipo_reporte == tipo_reporte)
         return self._reconstituir_lista(self._session.scalars(stmt).all())
 
+    from sqlalchemy import or_
     def feed_ordenado(self, limite: int = 50) -> list[Reporte]:
         """
         Devuelve los reportes más recientes (no archivados) para el feed
@@ -614,9 +615,14 @@ class ReporteRepository:
         """
         stmt = (
             select(ReporteORM)
-            .where(ReporteORM.estado_forzado.is_(None))   # excluye archivados/forzados
+            .where(
+                or_(
+                    ReporteORM.estado_forzado.is_(None),
+                    ReporteORM.estado_forzado != EstadoReporte.ARCHIVADO,
+                )
+            )
             .order_by(ReporteORM.timestamp.desc())
-            .limit(limite * 2)  # traemos más para filtrar expirados y re-ordenar
+            .limit(limite * 2)
         )
         reportes = self._reconstituir_lista(self._session.scalars(stmt).all())
         activos = [r for r in reportes if r.esta_activo]

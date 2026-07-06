@@ -543,6 +543,21 @@ class Reporte(ABC):
     def total_denuncias(self) -> int:
         return len(self._denuncias)
 
+    @property
+    def total_denuncias(self) -> int:
+        return len(self._denuncias)
+
+    def usuario_ya_voto(self, usuario_id: int) -> bool:
+        """
+        Indica si el usuario dado ya emitió una confirmación o un desmentido
+        sobre este reporte. Se expone como método (no property) porque requiere
+        un parámetro; la API lo usa para que el frontend sepa si debe
+        deshabilitar los botones de votar ya al servir la página (no solo tras
+        el clic, que es lo que corregimos en el fix anterior).
+        """
+        return usuario_id in self._usuarios_que_votaron
+
+
     def agregar_tags(self, *tags: str) -> None:
         self._tags.update(t.lower().strip() for t in tags)
 
@@ -628,7 +643,27 @@ class Reporte(ABC):
         if not moderador.tiene_permiso(Permiso.MODERAR_CONTENIDO):
             raise PermissionError(f"{moderador} no puede archivar reportes.")
         self._estado_forzado = EstadoReporte.ARCHIVADO
+    def verificar(self, moderador: Usuario) -> None:
+            """
+            Fuerza el estado a VERIFICADO por decisión de un moderador o
+            administrador (ambos poseen Permiso.MODERAR_CONTENIDO), sin
+            depender del balance automático de confirmaciones/desmentidos.
+            Al igual que `archivar()`, este estado queda fijo: no se
+            recalcula por votos futuros.
+            """
+            if not moderador.tiene_permiso(Permiso.MODERAR_CONTENIDO):
+                raise PermissionError(f"{moderador} no puede verificar reportes.")
+            self._estado_forzado = EstadoReporte.VERIFICADO
 
+    @property
+    def fue_verificado_por_moderacion(self) -> bool:
+            """
+            True si el estado VERIFICADO proviene de una acción manual de
+            moderación (vía `verificar()`), no del cálculo automático por
+            votos. Sirve para que la UI muestre un indicador distinto
+            (ej. "Verificado por moderación" vs. solo el badge de estado).
+            """
+            return self._estado_forzado == EstadoReporte.VERIFICADO
     # registro
     def _registrar_interaccion(self, interaccion: Interaccion) -> None:
         """
