@@ -203,6 +203,8 @@ class ReporteOut(BaseModel):
     timestamp: datetime
     autor_id: int
     autor_nombre: str
+    ya_voto: bool = False   # NUEVO
+    comentarios: list[InteraccionOut] = Field(default_factory=list)   # NUEVO
 
 
 class ReporteListOut(BaseModel):
@@ -344,7 +346,7 @@ AdminDep = Annotated[object, Depends(get_current_admin)]
 
 
 #dominio -> salida
-def _reporte_a_schema(reporte: Reporte) -> ReporteOut:
+def _reporte_a_schema(reporte: Reporte, usuario_id: Optional[int] = None) -> ReporteOut:
     tipo = type(reporte).__name__.replace("Reporte", "").lower()
     # Mapear nombre de clase a tipo string
     tipo_map = {
@@ -377,8 +379,20 @@ def _reporte_a_schema(reporte: Reporte) -> ReporteOut:
         timestamp=reporte.timestamp,
         autor_id=reporte.autor.id,
         autor_nombre=reporte.autor.nombre,
+        ya_voto=reporte.usuario_ya_voto(usuario_id) if usuario_id is not None else False,
+                comentarios=[
+            InteraccionOut(
+                id=c.id,
+                tipo="comentario",
+                autor_id=c.autor.id,
+                autor_nombre=c.autor.nombre,
+                timestamp=c.timestamp,
+                texto=c.texto,
+            )
+            for c in reporte.comentarios
+        ],
     )
-
+    
 
 def _usuario_a_schema(usuario) -> UsuarioOut:
     rol_map = {
@@ -571,7 +585,7 @@ def crear_reporte(datos: ReporteCreate, db: DbDep, current_user: CurrentUser):
     except Exception:
         pass
 
-    return _reporte_a_schema(reporte)
+    return _reporte_a_schema(reporte, usuario_id=current_user.id)
 
 
 @router_reportes.get("/feed", response_model=ReporteListOut)
@@ -588,7 +602,7 @@ def feed_principal(
     reportes = repo.feed_ordenado(limite=limite)
     return ReporteListOut(
         total=len(reportes),
-        reportes=[_reporte_a_schema(r) for r in reportes],
+        reportes=[_reporte_a_schema(r, usuario_id=current_user.id) for r in reportes],
     )
 
 
@@ -630,7 +644,7 @@ def buscar_reportes(
     pagina = reportes[skip: skip + limit]
     return ReporteListOut(
         total=len(reportes),
-        reportes=[_reporte_a_schema(r) for r in pagina],
+        reportes=[_reporte_a_schema(r, usuario_id=current_user.id) for r in pagina],
     )
 
 
@@ -657,7 +671,7 @@ def reportes_para_mapa(
         todos = repo.listar_activos()
         reportes = [r for r in todos if r.ubicacion.latitud is not None]
 
-    return [_reporte_a_schema(r) for r in reportes]
+    return [_reporte_a_schema(r, usuario_id=current_user.id) for r in reportes]
 
 
 @router_reportes.get("/{reporte_id}", response_model=ReporteOut)
@@ -668,7 +682,7 @@ def obtener_reporte(reporte_id: int, db: DbDep, current_user: CurrentUser):
     reporte = repo.obtener_por_id(reporte_id)
     if reporte is None:
         raise HTTPException(status_code=404, detail="Reporte no encontrado.")
-    return _reporte_a_schema(reporte)
+    return _reporte_a_schema(reporte, usuario_id=current_user.id)
 
 
 @router_reportes.delete("/{reporte_id}/archivar", status_code=204)
@@ -719,7 +733,7 @@ def confirmar_reporte(reporte_id: int, db: DbDep, current_user: CurrentUser):
         uow.usuarios.actualizar(reporte.autor)   # sincronizar reputación
         uow.commit()
 
-    return _reporte_a_schema(reporte)
+    return _reporte_a_schema(reporte, usuario_id=current_user.id)
 
 
 @router_interacciones.post("/desmentir", response_model=ReporteOut)
@@ -736,7 +750,7 @@ def desmentir_reporte(reporte_id: int, db: DbDep, current_user: CurrentUser):
         uow.usuarios.actualizar(reporte.autor)
         uow.commit()
 
-    return _reporte_a_schema(reporte)
+    return _reporte_a_schema(reporte, usuario_id=current_user.id)
 
 
 @router_interacciones.post("/comentar", response_model=InteraccionOut, status_code=201)

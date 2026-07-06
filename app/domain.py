@@ -688,6 +688,10 @@ class Reporte(ABC):
         self._registrar_interaccion(denuncia)
         return denuncia
 
+    def usuario_ya_voto(self, usuario_id: int) -> bool:
+        """Indica si el usuario ya emitió una confirmación o desmentido sobre este reporte."""
+        return usuario_id in self._usuarios_que_votaron
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(id={self._id}, estado={self.estado.value}, "

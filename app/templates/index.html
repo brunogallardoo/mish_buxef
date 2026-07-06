@@ -79,13 +79,11 @@
       </div>
 
       <!-- Avatar + nombre -->
-      <div class="flex items-center gap-2 cursor-pointer group"
-           onclick="togglePanel('panel-usuario')">
+      <div class="flex items-center gap-2">
         <div class="bg-blue-500 rounded-full h-8 w-8 flex items-center justify-center text-white font-bold text-sm select-none">
           {{ usuario.nombre[0] | upper }}
         </div>
         <span class="text-white text-sm hidden sm:inline">{{ usuario.nombre }}</span>
-        <i class="fa-solid fa-chevron-down text-blue-300 text-xs"></i>
       </div>
 
       <!-- Notificaciones -->
@@ -351,22 +349,28 @@
 
           <!-- Botones de acción -->
           <div class="flex items-center gap-1.5">
-            {%- if r.autor_id != usuario.id -%}
+           {%- if r.autor_id != usuario.id -%}
+            {%- if r.ya_voto -%}
+            <span class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-200 text-slate-500 flex items-center gap-1.5">
+              <i class="fa-solid fa-check"></i> Ya calificaste
+            </span>
+            {%- else -%}
             <button onclick="votar({{ r.id }}, 'confirmar', this)"
                     class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
-                           bg-green-500 hover:bg-green-600 text-white transition-colors
-                           flex items-center gap-1.5 shadow-sm"
+                          bg-green-500 hover:bg-green-600 text-white transition-colors
+                          flex items-center gap-1.5 shadow-sm"
                     title="Confirmar: este reporte es verídico">
               <i class="fa-solid fa-thumbs-up"></i> Confirmar
             </button>
             <button onclick="votar({{ r.id }}, 'desmentir', this)"
                     class="btn-accion px-3 py-1.5 rounded-xl text-xs font-semibold
-                           bg-red-500 hover:bg-red-600 text-white transition-colors
-                           flex items-center gap-1.5 shadow-sm"
+                          bg-red-500 hover:bg-red-600 text-white transition-colors
+                          flex items-center gap-1.5 shadow-sm"
                     title="Desmentir: este reporte es falso o ya no aplica">
               <i class="fa-solid fa-thumbs-down"></i> Desmentir
             </button>
             {%- endif -%}
+          {%- endif -%}
 
             <button onclick="abrirComentario({{ r.id }})"
                     class="px-3 py-1.5 rounded-xl text-xs font-semibold
@@ -385,7 +389,15 @@
             {%- endif -%}
           </div>
         </div>
-
+        <div id="comentarios-{{ r.id }}"
+            class="px-5 py-2 border-t border-slate-100 bg-white space-y-1.5 {% if not r.comentarios %}hidden{% endif %}">
+          {%- for c in r.comentarios -%}
+          <div class="text-xs text-slate-600">
+            <span class="font-semibold text-slate-700">{{ c.autor_nombre }}:</span>
+            <span>{{ c.texto }}</span>
+          </div>
+          {%- endfor -%}
+        </div>
         <!-- Panel de comentario (oculto por defecto) -->
         <div id="panel-comentario-{{ r.id }}"
              class="hidden px-5 py-3 border-t border-slate-100 bg-white">
@@ -649,11 +661,9 @@ async function votar(reporteId, accion, btn) {
     });
     if (res.ok) {
       const data = await res.json();
-      // Actualizar contadores en la tarjeta
       document.getElementById(`conf-${reporteId}`).textContent = data.total_confirmaciones;
       document.getElementById(`desm-${reporteId}`).textContent = data.total_desmentidos;
 
-      // Deshabilitar ambos botones de voto
       const card = btn.closest(".card-reporte");
       card.querySelectorAll(".btn-accion").forEach(b => {
         b.disabled = true;
@@ -663,15 +673,27 @@ async function votar(reporteId, accion, btn) {
       const etiqueta = accion === "confirmar" ? "✓ Confirmado" : "✗ Desmentido";
       showToast(etiqueta + " · Estado: " + data.estado, "ok");
 
-      // Actualizar badge de estado de la tarjeta
       const badgeEl = card.querySelector("[class*='badge']");
       if (badgeEl) badgeEl.textContent = data.estado.toUpperCase();
 
     } else {
       const err = await res.json();
       showToast("Error: " + (err.detail || "No se pudo votar"), "err");
-      btn.disabled = false;
-      btn.classList.remove("opacity-60");
+
+      if (res.status === 400) {
+        // Error de negocio (ej: ya votaste, es tu propio reporte): la acción
+        // seguirá siendo inválida, así que el botón queda deshabilitado
+        // en vez de invitar a reintentar.
+        const card = btn.closest(".card-reporte");
+        card.querySelectorAll(".btn-accion").forEach(b => {
+          b.disabled = true;
+          b.classList.add("opacity-40", "cursor-not-allowed");
+        });
+      } else {
+        // Error de red o del servidor: sí tiene sentido reintentar.
+        btn.disabled = false;
+        btn.classList.remove("opacity-60");
+      }
     }
   } catch (e) {
     showToast("Error de conexión", "err");
@@ -696,13 +718,25 @@ async function enviarComentario(reporteId) {
 
   try {
     const res = await fetch(`/reportes/${reporteId}/comentar`, {
-      method: "POST",
-      headers: HEADERS,
-      body: JSON.stringify({ texto })
+      method: "POST", headers: HEADERS, body: JSON.stringify({ texto })
     });
     if (res.ok) {
+      const data = await res.json();
       input.value = "";
       document.getElementById(`panel-comentario-${reporteId}`).classList.add("hidden");
+
+      const cont = document.getElementById(`comentarios-${reporteId}`);
+      cont.classList.remove("hidden");
+      const linea = document.createElement("div");
+      linea.className = "text-xs text-slate-600";
+      const autor = document.createElement("span");
+      autor.className = "font-semibold text-slate-700";
+      autor.textContent = data.autor_nombre + ": ";
+      const cuerpo = document.createElement("span");
+      cuerpo.textContent = data.texto;
+      linea.append(autor, cuerpo);
+      cont.appendChild(linea);
+
       showToast("Comentario publicado", "ok");
     } else {
       const err = await res.json();
@@ -854,12 +888,6 @@ mapa.on("click", e => {
   }).addTo(mapa).bindPopup("📍 Ubicación seleccionada").openPopup();
 });
 
-// ─── Panel colapsable (mobile) ──────────────────────────────────────────────
-function togglePanel(id) {
-  // solo en mobile; en desktop el grid siempre lo muestra
-  const el = document.getElementById(id);
-  if (el) el.classList.toggle("hidden");
-}
 </script>
 
 </body>

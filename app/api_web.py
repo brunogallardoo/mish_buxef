@@ -277,7 +277,7 @@ def index(request: Request):
         from app.repositories import ReporteRepository
         repo = ReporteRepository(session)
         reportes_dominio = repo.feed_ordenado(limite=30)
-        reportes = [_reporte_a_schema(r) for r in reportes_dominio]
+        reportes = [_reporte_a_schema(r, usuario_id=usuario.id) for r in reportes_dominio]
         usuario_schema = _usuario_a_schema(usuario)
 
         # Mapear colores y etiquetas
